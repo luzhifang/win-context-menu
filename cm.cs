@@ -164,22 +164,83 @@ public static class ContextMenuTool
 
     static void Sha256(List<string> files)
     {
+        files = files.FindAll(File.Exists);
+        if (files.Count == 0) return;
+        long total = 0;
+        foreach (string f in files) total += new FileInfo(f).Length;
+
+        // 超过 1 秒还没算完才弹出提示，小文件不会闪一下
+        var hint = Hint.Show(1000, "正在计算 SHA256（共 " + (total / (1024.0 * 1024 * 1024)).ToString("0.00") + " GB）……\r\n\r\n" +
+            "算完后本窗口会自动关闭并显示结果。\r\n点「取消」停止计算。", "SHA256");
+        var sw = Stopwatch.StartNew();
         var lines = new List<string>();
-        foreach (string f in files)
+        try
         {
-            if (!File.Exists(f)) continue;
-            using (var s = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 20, FileOptions.SequentialScan))
-            using (var h = new SHA256CryptoServiceProvider())
+            var buf = new byte[1 << 20];   // 流式计算，内存不随文件大小增长
+            foreach (string f in files)
             {
-                byte[] d = h.ComputeHash(s);   // 流式计算，内存不随文件大小增长
-                var sb = new StringBuilder(64);
-                foreach (byte x in d) sb.Append(x.ToString("x2"));
-                lines.Add(sb + "  " + Path.GetFileName(f));
+                using (var s = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan))
+                using (var h = new SHA256CryptoServiceProvider())
+                {
+                    int n;
+                    while ((n = s.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        if (hint.Cancelled) return;
+                        h.TransformBlock(buf, 0, n, null, 0);
+                    }
+                    h.TransformFinalBlock(buf, 0, 0);
+                    var sb = new StringBuilder(64);
+                    foreach (byte x in h.Hash) sb.Append(x.ToString("x2"));
+                    lines.Add(sb + "  " + Path.GetFileName(f));
+                }
             }
         }
-        if (lines.Count == 0) return;
+        finally { hint.Close(); }
+
         SetClipboard(string.Join("\r\n", lines));
-        Msg(string.Join("\n", lines) + "\n\n（已复制到剪贴板，格式同 sha256sum）", MB_ICONINFORMATION, "SHA256");
+        string took = sw.ElapsedMilliseconds < 1000 ? "" : "，耗时 " + sw.Elapsed.TotalSeconds.ToString("0.0") + " 秒";
+        Msg(string.Join("\n", lines) + "\n\n（已复制到剪贴板，格式同 sha256sum" + took + "）", MB_ICONINFORMATION, "SHA256");
+    }
+
+    // 耗时操作的提示框：在后台线程上，delayMs 后操作还没结束才显示；结束时由主线程关闭。
+    // 用户点「取消」时 Cancelled 变为 true，点「确定」只是关掉提示、操作继续。
+    sealed class Hint
+    {
+        volatile bool cancelled;
+        readonly ManualResetEvent done = new ManualResetEvent(false);
+        uint threadId;
+        Thread thread;
+        public bool Cancelled { get { return cancelled; } }
+
+        public static Hint Show(int delayMs, string text, string title)
+        {
+            var h = new Hint();
+            h.thread = new Thread(() =>
+            {
+                h.threadId = GetCurrentThreadId();
+                if (h.done.WaitOne(delayMs)) return;
+                int r = MessageBoxW(IntPtr.Zero, text, title, MB_OKCANCEL | MB_ICONINFORMATION | MB_SETFOREGROUND);
+                if (r == IDCANCEL && !h.done.WaitOne(0)) h.cancelled = true;
+            });
+            h.thread.IsBackground = true;   // 主线程结束时不必等它
+            h.thread.Start();
+            return h;
+        }
+
+        public void Close()
+        {
+            done.Set();
+            for (int i = 0; i < 20 && !thread.Join(i == 0 ? 0 : 50); i++)   // 消息框可能正在创建，稍等重试
+            {
+                EnumThreadWindows(threadId, (w, l) =>
+                {
+                    var cls = new StringBuilder(16);
+                    GetClassNameW(w, cls, cls.Capacity);
+                    if (cls.ToString() == "#32770") PostMessageW(w, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);   // 对话框窗口类
+                    return true;
+                }, IntPtr.Zero);
+            }
+        }
     }
 
     static void TakeOwn(List<string> items)
@@ -459,10 +520,18 @@ public static class ContextMenuTool
     }
 
     // ======================= Win32：消息框、剪贴板 =======================
-    const uint MB_ICONERROR = 0x10, MB_ICONWARNING = 0x30, MB_ICONINFORMATION = 0x40, MB_SETFOREGROUND = 0x10000;
+    const uint MB_OKCANCEL = 0x1, MB_ICONERROR = 0x10, MB_ICONWARNING = 0x30, MB_ICONINFORMATION = 0x40, MB_SETFOREGROUND = 0x10000;
+    const int IDCANCEL = 2;
+    const uint WM_CLOSE = 0x0010;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
+    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumThreadWindows(uint threadId, EnumWindowsProc fn, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr hWnd, StringBuilder name, int max);
+    [DllImport("user32.dll")] static extern bool PostMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
 
     static void Msg(string text, uint icon, string title = Title)
     {
