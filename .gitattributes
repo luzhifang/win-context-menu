@@ -1,0 +1,11 @@
+# 其他文本文件统一 LF
+* text=auto eol=lf
+
+# Windows 脚本按原样字节存储，不做换行转换：
+#   .cmd 必须是 CRLF（LF 换行的批处理在 cmd 里不可靠）
+#   .ps1 / .cs 要保留 UTF-8 BOM 和 CRLF（Windows PowerShell 5.1 靠 BOM 识别中文）
+#   templates 是「新建」菜单的文件模板，内容按原样复制给用户（.sh 必须是 LF，.ps1 带 BOM）
+*.cmd -text
+*.ps1 -text
+*.cs -text
+templates/** -text
