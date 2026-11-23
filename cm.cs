@@ -23,7 +23,7 @@ using Microsoft.Win32;
 public static class ContextMenuTool
 {
     const string Title = "右键工具";
-    const int QuietMs = 500;   // 多选合并：队列这么久没有新项目就开始处理
+    const int QuietMs = 200;   // 多选合并：队列这么久没有新项目就开始处理。实测 Explorer 相邻两个进程间隔最大约 17 ms
     static readonly Encoding Utf8 = new UTF8Encoding(false);
 
     // ======================= 入口 =======================

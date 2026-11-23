@@ -106,7 +106,7 @@ Windows 规定：选中超过 15 个项目时，这类菜单会被隐藏。
 - 所有菜单键名以 `CM.` 开头。
 - 编码：`.ps1` / `.cs` 为 UTF-8 **带 BOM** + CRLF，`.cmd` 只用 ASCII + CRLF，`get.ps1` 不带 BOM。`.gitattributes` 让这些文件按原样存储，不要改成自动换行转换。
 - 改完先运行 `install.ps1 -DryRun` 看看效果。
-- 多选时，Explorer 对每个选中项各启动一次 cm.exe，程序用命名互斥体合并为一批（约 0.5 秒延迟）。
+- 多选时，Explorer 对每个选中项各启动一次 cm.exe，程序用命名互斥体合并为一批（约 0.2 秒延迟）。
 - 路径：VS Code 在安装时查找（卸载登记 / PATH / 常见位置）；JetBrains 在点击时查找（注册表 `SOFTWARE\JetBrains`、`Program Files\JetBrains`、Toolbox 目录，取 `build.txt` 版本最大的）；WSL 使用默认发行版。
 
 ## 许可证
