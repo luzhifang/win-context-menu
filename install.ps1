@@ -113,13 +113,17 @@ function Get-UserVal([string]$Path, [string]$Name = '') {
 function Test-UserKey([string]$Path) { return (-not (Test-OursKey $Path)) -and (Test-Key $Path) }
 
 # ---- 经典菜单 ----
-$ClassicBefore = Test-Key $ClassicKey
-$ClassicForeign = $ClassicBefore -and -not (Test-OursKey $ClassicKey)
+$ClassicState = Get-ClassicState
+$ClassicBefore = $ClassicState -match '1'
+$ClassicForeign = @($ClassicKeys | Where-Object { Test-UserKey $_ })   # 别人写的键：不碰，也不记录
 $WantClassic = $false
 if (-not $IsWin11) {
     Say '经典右键菜单：Windows 10 不需要。'
-} elseif ($ClassicForeign) {
+} elseif ($ClassicForeign.Count -eq $ClassicKeys.Count) {
     Say '经典右键菜单：已由其他方式开启，保持不变。'
+} elseif ($ClassicForeign.Count) {
+    Say '经典右键菜单：已由其他方式开启，但缺少新版 Win11 需要的设置，安装时补上。'
+    $WantClassic = $true
 } elseif ($Classic -eq 'Ask' -and -not $DryRun) {
     $def = if ($ClassicBefore) { 'Y' } else { 'N' }
     $ans = Read-Host "`nWin11 是否恢复经典右键菜单（不用再点「显示更多选项」）？[Y/N，直接回车 = $def]"
@@ -343,8 +347,11 @@ function Set-RecordedKey([string]$Path, [hashtable]$Values) {
 }
 
 if ($WantClassic) {
-    Set-RecordedKey $ClassicKey @{}
-    Set-Key "$ClassicKey\InprocServer32" @{ '' = '' }
+    foreach ($ck in $ClassicKeys) {
+        if ($ClassicForeign -contains $ck) { continue }
+        Set-RecordedKey $ck @{}
+        Set-Key "$ck\InprocServer32" @{ '' = '' }
+    }
 }
 foreach ($e in $NewExts) {
     $r = Resolve-NewItem $e
@@ -392,7 +399,7 @@ try {
 } finally { $k.Close() }
 
 # 4.9 经典菜单开关有变化时才需要重启资源管理器
-if ((Test-Key $ClassicKey) -ne $ClassicBefore) {
+if ((Get-ClassicState) -ne $ClassicState) {
     Say '经典菜单设置有变化，正在重启资源管理器...'
     Restart-Explorer
 }

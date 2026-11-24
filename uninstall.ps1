@@ -16,7 +16,7 @@ try {
         $r = [System.Windows.Forms.MessageBox]::Show('确定要卸载右键菜单增强吗？', $Title, 'YesNo', 'Question')
         if ($r -ne 'Yes') { exit }
     }
-    $classicBefore = Test-Key $ClassicKey
+    $classicBefore = Get-ClassicState
     [void](Remove-Installed $InstallDir)
 
     # 删除安装目录：只删带安装记录的目录，防止误删。本脚本和 uninstall.cmd 自己就在里面，所以延迟 2 秒在后台删
@@ -25,7 +25,7 @@ try {
         Start-Process cmd.exe -WindowStyle Hidden -WorkingDirectory $env:TEMP `
             -ArgumentList "/c ping -n 3 127.0.0.1 >nul & rd /s /q `"$InstallDir`""
     }
-    if ((Test-Key $ClassicKey) -ne $classicBefore) { Restart-Explorer }
+    if ((Get-ClassicState) -ne $classicBefore) { Restart-Explorer }
     [void][System.Windows.Forms.MessageBox]::Show('已卸载。', $Title, 'OK', 'Information')
 } catch {
     [void][System.Windows.Forms.MessageBox]::Show("卸载失败：`n$($_.Exception.Message)", $Title, 'OK', 'Error')

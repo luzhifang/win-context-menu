@@ -3,7 +3,12 @@
 
 $Classes    = 'Software\Classes'
 $Prefix     = 'CM.'
-$ClassicKey = 'Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}'
+# Win11 经典右键菜单：在 HKCU 用空的 InprocServer32 盖住新式菜单的 COM 组件。
+# 2026-11 更新（KB5132061）起新式菜单多了第二个组件，两个都要盖住；旧系统上没有第二个组件，写了也无害
+$ClassicKeys = @(
+    'Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}',
+    'Software\Classes\CLSID\{51668040-5e31-4023-bbe3-149163bd80f1}'
+)
 $AppKey     = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\CM.ContextMenu'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'ContextMenu'
 $StateName  = 'install-state.json'
@@ -77,7 +82,7 @@ function Get-Ours($State, [bool]$Legacy) {
             elseif ($c.type -eq 'value') { $vals["$($c.path)|$($c.name)"] = $c.set }
         }
     } elseif ($Legacy) {
-        $keys += $ClassicKey, "$Classes\txtfilelegacy", "$Classes\.txt\ShellNew"
+        $keys += $ClassicKeys[0], "$Classes\txtfilelegacy", "$Classes\.txt\ShellNew"
         foreach ($e in $LegacyNewExts) {
             $keys += "$Classes\$e\ShellNew"
             $vals["$Classes\$e|"] = "VSCode$e"
@@ -132,6 +137,9 @@ function Remove-Installed([string]$Dir = $InstallDir) {
     Remove-Key $AppKey
     return $state
 }
+
+# 经典菜单相关键的存在情况，前后比较以决定要不要重启资源管理器
+function Get-ClassicState { ($ClassicKeys | ForEach-Object { [int](Test-Key $_) }) -join '' }
 
 function Restart-Explorer {
     Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
